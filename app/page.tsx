@@ -1,31 +1,61 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useAccount } from 'wagmi';
 import WalletInput from '@/components/WalletInput';
 import NetworkCard from '@/components/NetworkCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { getNetworksForAddress } from '@/lib/networks';
+import ConnectWallet from '@/components/ConnectWallet';
+import { getNetworksForAddress, networks } from '@/lib/networks';
 import { checkAllBalances } from '@/lib/balanceChecker';
 import { BalanceResult, CheckProgress } from '@/types';
 
 export default function Home() {
+  const { address: connectedAddress, isConnected } = useAccount();
   const [results, setResults] = useState<BalanceResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState<CheckProgress | null>(null);
   const [checkedAddress, setCheckedAddress] = useState('');
   const [showOnlyWithBalance, setShowOnlyWithBalance] = useState(false);
+  const [inputMode, setInputMode] = useState<'wallet' | 'manual'>('wallet');
 
-  const handleCheck = useCallback(async (address: string) => {
+  // Auto-check when wallet is connected and user clicks check
+  const handleCheckConnectedWallet = useCallback(async () => {
+    if (!connectedAddress) return;
+
+    setIsLoading(true);
+    setResults([]);
+    setCheckedAddress(connectedAddress);
+    setProgress({ total: 0, completed: 0 });
+
+    // Get all EVM networks for connected wallet
+    const evmNetworks = networks.filter((n) => n.type === 'evm');
+    setProgress({ total: evmNetworks.length, completed: 0 });
+
+    const balanceResults = await checkAllBalances(
+      evmNetworks,
+      connectedAddress,
+      (completed, total, currentNetwork) => {
+        setProgress({ total, completed, currentNetwork });
+      }
+    );
+
+    setResults(balanceResults);
+    setIsLoading(false);
+    setProgress(null);
+  }, [connectedAddress]);
+
+  const handleManualCheck = useCallback(async (address: string) => {
     setIsLoading(true);
     setResults([]);
     setCheckedAddress(address);
     setProgress({ total: 0, completed: 0 });
 
-    const networks = getNetworksForAddress(address);
-    setProgress({ total: networks.length, completed: 0 });
+    const networksToCheck = getNetworksForAddress(address);
+    setProgress({ total: networksToCheck.length, completed: 0 });
 
     const balanceResults = await checkAllBalances(
-      networks,
+      networksToCheck,
       address,
       (completed, total, currentNetwork) => {
         setProgress({ total, completed, currentNetwork });
@@ -36,6 +66,12 @@ export default function Home() {
     setIsLoading(false);
     setProgress(null);
   }, []);
+
+  // Reset results when switching modes
+  useEffect(() => {
+    setResults([]);
+    setCheckedAddress('');
+  }, [inputMode]);
 
   const filteredResults = showOnlyWithBalance
     ? results.filter((r) => r.hasBalance)
@@ -54,8 +90,88 @@ export default function Home() {
             Check your testnet balances across multiple networks
           </p>
         </div>
-        {/* Wallet Input */}
-        <WalletInput onSubmit={handleCheck} isLoading={isLoading} />
+
+        {/* Mode Toggle */}
+        <div className="flex justify-center mb-6">
+          <div className="inline-flex rounded-lg border border-gray-700 p-1 bg-gray-800">
+            <button
+              onClick={() => setInputMode('wallet')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'wallet'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Connect Wallet
+            </button>
+            <button
+              onClick={() => setInputMode('manual')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'manual'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Manual Input
+            </button>
+          </div>
+        </div>
+
+        {/* Wallet Connection Mode */}
+        {inputMode === 'wallet' && (
+          <div className="max-w-2xl mx-auto">
+            <div className="p-6 rounded-xl border border-gray-700 bg-gray-800/50">
+              <div className="flex flex-col items-center gap-4">
+                <ConnectWallet />
+
+                {isConnected && connectedAddress && (
+                  <>
+                    <div className="w-full border-t border-gray-700 my-2" />
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm mb-2">Connected Address</p>
+                      <p className="font-mono text-sm text-white bg-gray-700 px-3 py-2 rounded-lg break-all">
+                        {connectedAddress}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleCheckConnectedWallet}
+                      disabled={isLoading}
+                      className="w-full max-w-xs px-6 py-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors text-white"
+                    >
+                      {isLoading ? 'Checking...' : 'Check All EVM Testnets'}
+                    </button>
+                    <p className="text-gray-500 text-xs text-center">
+                      This will check balances across all 20 EVM testnet networks
+                    </p>
+                  </>
+                )}
+
+                {!isConnected && (
+                  <p className="text-gray-500 text-sm text-center mt-2">
+                    Connect your wallet to automatically check balances across all EVM testnets
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Non-EVM Notice */}
+            <div className="mt-4 p-4 rounded-lg border border-gray-700 bg-gray-800/30">
+              <p className="text-gray-400 text-sm text-center">
+                For <span className="text-blue-400">Solana</span>, <span className="text-purple-400">Sui</span>, or <span className="text-green-400">Aptos</span> addresses, use the Manual Input mode
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Input Mode */}
+        {inputMode === 'manual' && (
+          <div>
+            <WalletInput onSubmit={handleManualCheck} isLoading={isLoading} />
+            <p className="text-gray-500 text-xs text-center mt-2">
+              Supports EVM, Solana, Sui, and Aptos addresses
+            </p>
+          </div>
+        )}
 
         {/* Progress Indicator */}
         {isLoading && progress && (
@@ -149,15 +265,18 @@ export default function Home() {
               </svg>
             </div>
             <h3 className="text-lg font-medium text-gray-300 mb-2">
-              Enter a wallet address to get started
+              {inputMode === 'wallet'
+                ? 'Connect your wallet to check balances'
+                : 'Enter a wallet address to get started'}
             </h3>
             <p className="text-gray-500 max-w-md mx-auto">
-              Supports EVM (Ethereum, Polygon, Arbitrum, etc.), Solana, Sui, and Aptos addresses
+              {inputMode === 'wallet'
+                ? 'Connect MetaMask or any EVM wallet to check all testnet balances at once'
+                : 'Supports EVM (Ethereum, Polygon, Arbitrum, etc.), Solana, Sui, and Aptos addresses'}
             </p>
           </div>
         )}
       </div>
-
     </main>
   );
 }
