@@ -195,6 +195,18 @@ export const networks: Network[] = [
     logo: 'https://cryptologos.cc/logos/moonbeam-glmr-logo.svg',
   },
   {
+    id: 'cronos-testnet',
+    name: 'Cronos Testnet',
+    type: 'evm',
+    rpcUrl: 'https://evm-t3.cronos.org',
+    chainId: 360,
+    symbol: 'tCRO',
+    decimals: 18,
+    explorerUrl: 'https://testnet.cronoscan.com',
+    faucetUrl: 'https://cronos.org/faucet',
+    logo: 'https://cryptologos.cc/logos/cronos-cro-logo.svg',
+  },
+  {
     id: 'taiko-hekla',
     name: 'Taiko Hekla',
     type: 'evm',
